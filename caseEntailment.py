@@ -7,6 +7,7 @@ import pickle
 from tqdm import tqdm
 import nltk
 import string
+import json
 
 from rank_bm25 import BM25Okapi as BM25
 
@@ -275,8 +276,7 @@ class caseEntailment():
 
 		results.close()
 
-entailment_model = caseEntailment('COLIEE2022')
-entailment_model.createDataFrames()
-# ce.preProcess()
-# ce.bm25Entailment()
-# ce.calculateF1(ce.resultFile, ce.test_labels, 1)
+entailment_model = caseEntailment('COLIEE2021')
+entailment_model.preProcess()
+entailment_model.bm25Entailment()
+entailment_model.calculateF1(entailment_model.resultFile, entailment_model.test_labels, 1)
