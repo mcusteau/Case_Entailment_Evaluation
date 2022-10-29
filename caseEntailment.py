@@ -5,14 +5,16 @@ import spacy
 from spacy.lang.en import English
 import pickle
 from tqdm import tqdm
+import nltk
+import string
 
 from rank_bm25 import BM25Okapi as BM25
 
-import priorCaseRanking as pcr
-
 nlp = English()
 
-class caseEntailment(pcr.PriorCaseRank):
+wn = nltk.WordNetLemmatizer()
+
+class caseEntailment():
 
 	def __init__(self, datasetName='COLIEE2021', stopwords_file='stopwords.txt', resultFile='Results.txt', python36=False):
 					
@@ -21,10 +23,18 @@ class caseEntailment(pcr.PriorCaseRank):
 		self.resultFile = resultFile
 		self.datasetName = datasetName
 
-		self.test_folder = datasetName+"/task_2/task2_2021_test_nolabels"
-		self.train_folder = datasetName+"/task_2/task2_2021_train"
-		self.test_labels = datasetName+"/task_2/task2_test_labels_2021.json"
-		self.train_labels = datasetName+"/task_2/task2_train_labels_2021.json"
+		if(datasetName=='COLIEE2021'):
+			self.test_folder = datasetName+"/task_2/task2_2021_test_nolabels"
+			self.train_folder = datasetName+"/task_2/task2_2021_train"
+			self.test_labels = datasetName+"/task_2/task2_test_labels_2021.json"
+			self.train_labels = datasetName+"/task_2/task2_train_labels_2021.json"
+		elif(datasetName=='COLIEE2022'):
+			self.test_folder = datasetName+"/task_2/task2_2022_test"
+			self.train_folder = datasetName+"/task_2/task2_2022_train"
+			self.test_labels = datasetName+"/task_2/task2_test_labels_2022.json"
+			self.train_labels = datasetName+"/task_2/task2_train_labels_2022.json"
+		else:
+			raise Exception("Invalid dataset name")
 	
 
 		self.caseDataFrame = None
@@ -37,7 +47,7 @@ class caseEntailment(pcr.PriorCaseRank):
 			# in case we ever need to use a server that has a lower python version, not in use currently
 			pass
 		else:
-			self.pickleFilePath = datasetName+"/task_2/clean_query_coliee2021"
+			self.pickleFilePath = datasetName+"/task_2/test_pickles/clean_query_coliee2021"
 			self.pickleFilePath_train = datasetName+"/task_2/train_pickles/clean_query_coliee2021"
 
 
@@ -265,7 +275,7 @@ class caseEntailment(pcr.PriorCaseRank):
 
 		results.close()
 
-entailment_model = caseEntailment()
+entailment_model = caseEntailment('COLIEE2022')
 entailment_model.createDataFrames()
 # ce.preProcess()
 # ce.bm25Entailment()
