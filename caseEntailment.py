@@ -166,9 +166,7 @@ class caseEntailment():
 		rel_num = 0
 		rel_cases = 0
 		for label in labels_json.keys():
-			relevant_docs = labels_json[label]
-			if(type(relevant_docs) is str):
-				relevant_docs = [relevant_docs]
+			relevant_docs = labels_json[label].split(", ")
 			rel_cases += len(relevant_docs)
 			for i in range(len(relevant_docs)):
 				relevant_docs[i] = relevant_docs[i].replace(".txt","")
@@ -196,9 +194,7 @@ class caseEntailment():
 		num_queries = 0
 		for label in labels_json.keys():
 			num_queries +=1
-			relevant_docs = labels_json[label]
-			if(type(relevant_docs) is str):
-				relevant_docs = [relevant_docs]
+			relevant_docs = labels_json[label].split(", ")
 			for i in range(len(relevant_docs)):
 				relevant_docs[i] = relevant_docs[i].replace(".txt","")
 			retreived = []
