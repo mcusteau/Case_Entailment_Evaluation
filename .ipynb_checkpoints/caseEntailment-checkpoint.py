@@ -302,15 +302,14 @@ class caseEntailment():
     # evaluate similarity for sentences with given model
     def EvaluateSimilaritySBERT(self):
         results = open(self.resultFile, 'w+')
-        self.model = self.transformer_preprocess("usc-isi/sbert-roberta-large-anli-mnli-snli")
+        self.model = self.transformer_preprocess("bert-base-nli-mean-tokens")
 
         # parse through our 5 datasets of sentence pairs
         totalCases = len(self.caseDataFrame)
-        case_completed = 0
         for caseNum in tqdm(range(totalCases)):
 
             similarity_scores = []
-            print("Processing:", case_completed, "out of",totalCases,"cases")
+            print("Processing:", self.caseDataFrame['case_number'][caseNum], "out of",totalCases,"cases")
 
             # parse through each sentence pair of dataset
             for i in tqdm(range(len(self.caseDataFrame['paragraphs'][caseNum]))):
@@ -319,7 +318,6 @@ class caseEntailment():
 
             sortedDocs = [(k, v) for k, v in sorted(similarity_scores, key=lambda item: item[1], reverse=True)]
             self.results(self.caseDataFrame['case_number'][caseNum], sortedDocs, results, topn=5)
-            case_completed+=1
 
         results.close()
         
