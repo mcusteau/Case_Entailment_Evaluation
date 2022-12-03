@@ -222,7 +222,49 @@ class caseEntailment():
 		return f1
 
 
-########## Computation
+########## Training
+
+	def trainT5(sentence_pairs, labels):
+
+		tokenizer = T5Tokenizer.from_pretrained("t5-small")
+		model = T5ForConditionalGeneration.from_pretrained("t5-small")
+		#data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
+
+		tokenized_sentences = tokenizer(sentence_pairs, return_tensors="pt")
+		toeknized_labels = tokenizer(labels, return_tensors="pt")
+
+		data = {'sentence_pair':tokenized_sentences.input_ids, 'label':tokenized_labels.input_ids}
+
+		loader = torch.utils.data.DataLoader(data, batch_size=4, shuffle=True)
+
+		for batch in loader:
+		    break
+		print({k: v.shape for k, v in batch.items()})
+
+		num_epochs = 3
+		start_epoch = 0
+
+		device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+		model.to(device)
+
+		model.train()
+
+		start_epoch=0
+		for epoch in range(start_epoch, num_epochs):
+		    loop = tqdm(loader)
+		    for batch in loop:
+
+		    	sentences = batch['sentence_pair'].to(device)
+		    	labels = batch['label'].to(device)
+
+		    	output = model(input_ids=sentences, labels=labels)
+
+		    	loss = output.loss
+		    	loss.backward()
+
+		model.save_pretrained('./models/t5')
+
+########## Computing Results
 
 
 	# Write output in result txt file
@@ -271,6 +313,8 @@ class caseEntailment():
 			self.results(self.caseDataFrame['case_number'][caseNum], rankedDocs, results, topn=5)
 
 		results.close()
+
+
 
 entailment_model = caseEntailment('COLIEE2021')
 entailment_model.preProcess()
