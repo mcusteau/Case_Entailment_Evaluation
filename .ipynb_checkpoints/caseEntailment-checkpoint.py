@@ -223,49 +223,7 @@ class caseEntailment():
         return f1
 
 
-########## Training
-
-	def trainT5(sentence_pairs, labels):
-
-		tokenizer = T5Tokenizer.from_pretrained("t5-small")
-		model = T5ForConditionalGeneration.from_pretrained("t5-small")
-		#data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
-
-		tokenized_sentences = tokenizer(sentence_pairs, return_tensors="pt")
-		toeknized_labels = tokenizer(labels, return_tensors="pt")
-
-		data = {'sentence_pair':tokenized_sentences.input_ids, 'label':tokenized_labels.input_ids}
-
-		loader = torch.utils.data.DataLoader(data, batch_size=4, shuffle=True)
-
-		for batch in loader:
-		    break
-		print({k: v.shape for k, v in batch.items()})
-
-		num_epochs = 3
-		start_epoch = 0
-
-		device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-		model.to(device)
-
-		model.train()
-
-		start_epoch=0
-		for epoch in range(start_epoch, num_epochs):
-		    loop = tqdm(loader)
-		    for batch in loop:
-
-		    	sentences = batch['sentence_pair'].to(device)
-		    	labels = batch['label'].to(device)
-
-		    	output = model(input_ids=sentences, labels=labels)
-
-		    	loss = output.loss
-		    	loss.backward()
-
-		model.save_pretrained('./models/t5')
-
-########## Computing Results
+########## Computation
 
 
 	# Write output in result txt file
@@ -344,15 +302,14 @@ class caseEntailment():
     # evaluate similarity for sentences with given model
     def EvaluateSimilaritySBERT(self):
         results = open(self.resultFile, 'w+')
-        self.model = self.transformer_preprocess("usc-isi/sbert-roberta-large-anli-mnli-snli")
+        self.model = self.transformer_preprocess("bert-base-nli-mean-tokens")
 
         # parse through our 5 datasets of sentence pairs
         totalCases = len(self.caseDataFrame)
-        case_completed = 0
         for caseNum in tqdm(range(totalCases)):
 
             similarity_scores = []
-            print("Processing:", case_completed, "out of",totalCases,"cases")
+            print("Processing:", self.caseDataFrame['case_number'][caseNum], "out of",totalCases,"cases")
 
             # parse through each sentence pair of dataset
             for i in tqdm(range(len(self.caseDataFrame['paragraphs'][caseNum]))):
@@ -361,14 +318,11 @@ class caseEntailment():
 
             sortedDocs = [(k, v) for k, v in sorted(similarity_scores, key=lambda item: item[1], reverse=True)]
             self.results(self.caseDataFrame['case_number'][caseNum], sortedDocs, results, topn=5)
-            case_completed+=1
 
         results.close()
         
         
         
-
-
 
 entailment_model = caseEntailment('COLIEE2021')
 entailment_model.preProcess()
