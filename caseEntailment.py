@@ -343,10 +343,14 @@ class caseEntailment():
 	# Write output in result txt file
 
 	@staticmethod
-	def results(testQuerieNum, rankedDocs, resultFile, topn=100, entailment=False):
+	def results(testQuerieNum, rankedDocs, resultFile, topn=100, entailment=False, thresh=None):
 
-	    if entailment: topn=len(rankedDocs)
-
+	    if entailment: 
+            topn=len(rankedDocs)
+            sortedDocs_unfiltered = rankedDocs
+            sortedDocs = [(k, v) for k,v in sortedDocs_unfiltered if v >= thresh]
+            if len(sortedDocs)==0: sortedDocs=[sortedDocs_unfiltered[0]]
+            rankedDocs = sortedDocs
 
 	    for x in range(min(topn, len(rankedDocs))):
 	        rank = str(x + 1)
@@ -464,7 +468,7 @@ class caseEntailment():
 
 
 	# evaluate similarity for sentences with given model
-	def EvaluateSimilaritySBERT(self,thresh):
+	def EvaluateSimilaritySBERT(self,thresh=0.7):
 	    results = open(self.resultFile, 'w+')
 	    self.model = self.transformer_preprocess("usc-isi/sbert-roberta-large-anli-mnli-snli")
 
@@ -482,11 +486,8 @@ class caseEntailment():
 	            similarity_scores.append((self.caseDataFrame['paragraph_names'][caseNum][i],self.FindSimilarityWithTransformer(self.caseDataFrame['entailed_fragment'][caseNum], self.caseDataFrame['paragraphs'][caseNum][i])))
 
 	        sortedDocs_unfiltered = [(k, v) for k, v in sorted(similarity_scores, key=lambda item: item[1], reverse=True)]
-	        sortedDocs = [(k, v) for k,v in sortedDocs_unfiltered if v >= thresh]
-	        if len(sortedDocs)==0: sortedDocs=[sortedDocs_unfiltered[0]]
-
 	        
-	        self.results(self.caseDataFrame['case_number'][caseNum], sortedDocs, results, entailment=True)
+	        self.results(self.caseDataFrame['case_number'][caseNum], sortedDocs_unfiltered, results, entailment=True,thresh=thresh)
 	        case_completed+=1
 
 	    results.close()
@@ -496,13 +497,13 @@ class caseEntailment():
 
 
 
-entailment_model = caseEntailment('COLIEE2021')
-entailment_model.preProcess()
-# # # entailment_model.bm25Entailment()
-# sentences, labels = entailment_model.preProcessT5(train=True)
-# entailment_model.trainT5(sentences, labels)
-sentences, labels = entailment_model.preProcessT5(train=False)
-entailment_model.EvaluateSimilarityT5(sentences, labels, "./models/t5")
+# entailment_model = caseEntailment('COLIEE2021')
+# entailment_model.preProcess()
+# # # # entailment_model.bm25Entailment()
+# # sentences, labels = entailment_model.preProcessT5(train=True)
+# # entailment_model.trainT5(sentences, labels)
+# sentences, labels = entailment_model.preProcessT5(train=False)
+# entailment_model.EvaluateSimilarityT5(sentences, labels, "./models/t5")
 
         
    
@@ -511,5 +512,5 @@ entailment_model.EvaluateSimilarityT5(sentences, labels, "./models/t5")
 entailment_model = caseEntailment('COLIEE2021')
 entailment_model.preProcess()
 # entailment_model.bm25Entailment()
-entailment_model.EvaluateSimilaritySBERT(thresh=0.7)
+entailment_model.EvaluateSimilaritySBERT()
 entailment_model.calculateF1(entailment_model.resultFile, entailment_model.test_labels, 5)
