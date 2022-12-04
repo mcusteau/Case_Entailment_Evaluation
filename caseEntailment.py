@@ -353,9 +353,8 @@ class caseEntailment():
 
 	    if entailment: 
             topn=len(rankedDocs)
-            sortedDocs_unfiltered = rankedDocs
-            sortedDocs = [(k, v) for k,v in sortedDocs_unfiltered if v >= thresh]
-            if len(sortedDocs)==0: sortedDocs=[sortedDocs_unfiltered[0]]
+            sortedDocs = [(k, v) for k,v in rankedDocs if v >= thresh]
+            if len(sortedDocs)==0: sortedDocs=[rankedDocs[0]]
             rankedDocs = sortedDocs
 
 	    for x in range(min(topn, len(rankedDocs))):
