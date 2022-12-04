@@ -335,7 +335,9 @@ class caseEntailment():
 					labels.append("Exclusion")
 
 		return sentences, labels
-	########## Computing Results
+
+
+########## Computing Results
 
 
 	# Write output in result txt file
