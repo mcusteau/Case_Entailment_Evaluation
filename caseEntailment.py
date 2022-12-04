@@ -201,33 +201,36 @@ class caseEntailment():
 	    print("recall at top "+str(topn)+" found is", recall)
 	    return recall
 
-	@staticmethod
-	def calculatePrecision(self, results, labels, topn):
-	    lf = open(labels, "r")
-	    rf = open(results, "r")
-	    results_lines = rf.readlines()
-	    labels_json = json.load(lf)
-	    rel_num = 0
-	    num_queries=0
-	    for label in labels_json.keys():
-	        num_queries +=1
-	        relevant_docs = labels_json[label].split(", ")
-	        for i in range(len(relevant_docs)):
-	            relevant_docs[i] = relevant_docs[i].replace(".txt","")
-	        retreived = []
-	        for line in results_lines:
-	            line_split = line.split('\t')
-	            if(line_split[0]==label.replace(".txt","")):
-	                retreived.append(line_split[2])
-		
-	        for i in range(min(topn, len(retreived))):
-	            if(retreived[i] in relevant_docs):
-	                rel_num+=1
 
-	    retreived_cases = num_queries*topn
-	    precision = rel_num/retreived_cases
-	    print("precision at top "+str(topn)+" found is", precision)
-	    return precision
+    @staticmethod
+    def calculatePrecision(self, results, labels, topn):
+        lf = open(labels, "r")
+        rf = open(results, "r")
+        results_lines = rf.readlines()
+        labels_json = json.load(lf)
+        retreived_cases = 0
+        rel_num = 0
+        num_queries=0
+        for label in labels_json.keys():
+            num_queries +=1
+            relevant_docs = labels_json[label].split(", ")
+            for i in range(len(relevant_docs)):
+                relevant_docs[i] = relevant_docs[i].replace(".txt","")
+            retreived = []
+            for line in results_lines:
+                line_split = line.split('\t')
+                if(line_split[0]==label.replace(".txt","")):
+                    retreived.append(line_split[2])
+		
+            for i in range(min(topn, len(retreived))):
+                retreived_cases +=1
+                if(retreived[i] in relevant_docs):
+                    rel_num+=1
+
+        # retreived_cases = num_queries*topn
+        precision = rel_num/retreived_cases
+        print("precision at top "+str(topn)+" found is", precision)
+        return precision
 
 
 
@@ -336,8 +339,12 @@ class caseEntailment():
 
 
 	# Write output in result txt file
-	@staticmethod
-	def results(testQuerieNum, rankedDocs, resultFile, topn=100):
+
+    @staticmethod
+    def results(testQuerieNum, rankedDocs, resultFile, topn=100, entailment=False):
+
+        if entailment: topn=len(rankedDocs)
+
 
 	    for x in range(min(topn, len(rankedDocs))):
 	        rank = str(x + 1)
@@ -347,7 +354,17 @@ class caseEntailment():
 	        pass
 	    pass 
 
+    # # Write output in result txt file
+    # @staticmethod
+    # def relevantResults(testQuerieNum, rankedDocs, resultFile, topn=100,relevant=True):
 
+    #     for x in range( len(rankedDocs)):
+    #         rank = str(x + 1)
+    #         docID, score = rankedDocs[x]
+    #         resultFile.write(testQuerieNum + "\tQ0\t" + str(docID) +
+    #                 "\t" + rank + "\t" + str(score) + "\tmyRun\n")
+    #         pass
+    #     pass 
 
 
 	#returns ranked by bm25 score dictionary with doc id as key and score as value
@@ -401,6 +418,7 @@ class caseEntailment():
 			break
 		print({k: v.shape for k, v in batch.items()})
 
+
 		model.eval()
 
 		device = torch.device('cuda')
@@ -443,32 +461,36 @@ class caseEntailment():
 
 
 
-	# evaluate similarity for sentences with given model
-	def EvaluateSimilaritySBERT(self):
-	    results = open(self.resultFile, 'w+')
-	    self.model = self.transformer_preprocess("usc-isi/sbert-roberta-large-anli-mnli-snli")
+    # evaluate similarity for sentences with given model
+    def EvaluateSimilaritySBERT(self,thresh):
+        results = open(self.resultFile, 'w+')
+        self.model = self.transformer_preprocess("usc-isi/sbert-roberta-large-anli-mnli-snli")
 
-	    # parse through our 5 datasets of sentence pairs
-	    totalCases = len(self.caseDataFrame)
-	    case_completed = 0
-	    for caseNum in tqdm(range(totalCases)):
+        # parse through our 5 datasets of sentence pairs
+        totalCases = len(self.caseDataFrame)
+        case_completed = 0
+        for caseNum in tqdm(range(totalCases)):
 
-	        similarity_scores = []
-	        print("Processing:", case_completed, "out of",totalCases,"cases")
+            similarity_scores = []
+            print("Processing:", case_completed, "out of",totalCases,"cases")
 
-	        # parse through each sentence pair of dataset
-	        for i in tqdm(range(len(self.caseDataFrame['paragraphs'][caseNum]))):
-	            # calculate their cosine similarity
-	            similarity_scores.append((self.caseDataFrame['paragraph_names'][caseNum][i],self.FindSimilarityWithTransformer(self.caseDataFrame['entailed_fragment'][caseNum], self.caseDataFrame['paragraphs'][caseNum][i])))
+            # parse through each sentence pair of dataset
+            for i in tqdm(range(len(self.caseDataFrame['paragraphs'][caseNum]))):
+                # calculate their cosine similarity
+                similarity_scores.append((self.caseDataFrame['paragraph_names'][caseNum][i],self.FindSimilarityWithTransformer(self.caseDataFrame['entailed_fragment'][caseNum], self.caseDataFrame['paragraphs'][caseNum][i])))
 
-	        sortedDocs = [(k, v) for k, v in sorted(similarity_scores, key=lambda item: item[1], reverse=True)]
-	        self.results(self.caseDataFrame['case_number'][caseNum], sortedDocs, results, topn=5)
-	        case_completed+=1
+            sortedDocs_unfiltered = [(k, v) for k, v in sorted(similarity_scores, key=lambda item: item[1], reverse=True)]
+            sortedDocs = [(k, v) for k,v in sortedDocs_unfiltered if v >= thresh]
+            if len(sortedDocs)==0: sortedDocs=[sortedDocs_unfiltered[0]]
 
-	    results.close()
+            
+            self.results(self.caseDataFrame['case_number'][caseNum], sortedDocs, results, entailment=True)
+            case_completed+=1
+
+        results.close()
 	    
 	    
-	    
+
 
 
 
@@ -479,3 +501,13 @@ entailment_model.preProcess()
 # entailment_model.trainT5(sentences, labels)
 sentences, labels = entailment_model.preProcessT5(train=False)
 entailment_model.EvaluateSimilarityT5(sentences, labels, "./models/t5")
+
+        
+   
+
+
+entailment_model = caseEntailment('COLIEE2021')
+entailment_model.preProcess()
+# entailment_model.bm25Entailment()
+entailment_model.EvaluateSimilaritySBERT(thresh=0.7)
+entailment_model.calculateF1(entailment_model.resultFile, entailment_model.test_labels, 5)
