@@ -360,17 +360,6 @@ class caseEntailment():
 	        pass
 	    pass 
 
-    # # Write output in result txt file
-    # @staticmethod
-    # def relevantResults(testQuerieNum, rankedDocs, resultFile, topn=100,relevant=True):
-
-    #     for x in range( len(rankedDocs)):
-    #         rank = str(x + 1)
-    #         docID, score = rankedDocs[x]
-    #         resultFile.write(testQuerieNum + "\tQ0\t" + str(docID) +
-    #                 "\t" + rank + "\t" + str(score) + "\tmyRun\n")
-    #         pass
-    #     pass 
 
 
 	#returns ranked by bm25 score dictionary with doc id as key and score as value
