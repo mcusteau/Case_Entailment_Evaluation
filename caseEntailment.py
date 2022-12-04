@@ -29,8 +29,11 @@ class ForT5Dataset(torch.utils.data.Dataset):
     def __getitem__(self, index):
         input_ids = torch.tensor(self.inputs["input_ids"][index]).squeeze()
         target_ids = torch.tensor(self.targets["input_ids"][index]).squeeze()
+
+        input_ids_am = torch.tensor(self.inputs["attention_mask"][index]).squeeze()
+        target_ids_am = torch.tensor(self.targets["attention_mask"][index]).squeeze()
         
-        return {"input_ids": input_ids, "labels": target_ids}
+        return {"input_ids": input_ids, "input_attention_mask": input_ids_am, "labels": target_ids, "labels_attention_mask": target_ids_am}
 
 class caseEntailment():
 
@@ -244,16 +247,16 @@ class caseEntailment():
 
 ########## Training
 
-	def trainT5(self, sentence_pairs, labels):
+	def trainT5(self, paragraph_pairs, labels):
 
 		tokenizer = T5Tokenizer.from_pretrained("t5-small")
 		model = T5ForConditionalGeneration.from_pretrained("t5-small")
 		#data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
 
-		tokenized_sentences = tokenizer(sentence_pairs, padding=True, return_tensors="pt", truncation=True)
+		tokenized_paragraphs = tokenizer(paragraph_pairs, padding=True, return_tensors="pt", truncation=True)
 		tokenized_labels = tokenizer(labels, padding=True, return_tensors="pt")
 
-		train_data = ForT5Dataset(tokenized_sentences, tokenized_labels)
+		train_data = ForT5Dataset(tokenized_paragraphs, tokenized_labels)
 
 		loader = torch.utils.data.DataLoader(train_data, batch_size=4, shuffle=True)
 
@@ -263,7 +266,7 @@ class caseEntailment():
 
 		optim = AdamW(model.parameters(), lr=5e-5)
 
-		num_epochs = 10
+		num_epochs = 2
 		start_epoch = 0
 
 		num_training_steps = num_epochs * len(loader)
@@ -288,9 +291,12 @@ class caseEntailment():
 			loop = tqdm(loader)
 			for batch in loop:
 
-				sentences = batch['input_ids'].to(device)
+				paragraphs = batch['input_ids'].to(device)
 				labels = batch['labels'].to(device)
-				output = model(input_ids=sentences, labels=labels)
+				paragraphs_am = batch['input_attention_mask'].to(device)
+				labels = batch['labels'].to(device)
+				labels_am = batch['labels_attention_mask'].to(device)
+				output = model(input_ids=paragraphs, labels=labels, attention_mask=paragraphs_am, decoder_attention_mask=labels_am)
 
 				loss = output.loss
 				loss.backward()
@@ -303,9 +309,9 @@ class caseEntailment():
 		    'optimizer_state_dict': optim.state_dict(),
 		    'scheduler_state_dict': lr_scheduler.state_dict(),
 		    'loss': loss,
-		    }, './models/checkpoint'+str(epoch)+'.pth.tar')
-		print('saved checkpoint')
-		model.save_pretrained('./models/t5')
+		    }, './models/checkpoint'+str(epoch)+'_am.pth.tar')
+			print('saved checkpoint')
+		model.save_pretrained('./models/t5_am')
 
 
 	def preProcessT5(self, train=True):
@@ -328,7 +334,7 @@ class caseEntailment():
 			case_number = case_df['case_number'][caseNum]
 			relevant_paragraphs = [i.replace(".txt", "") for i in labels_json[case_number]]
 			for i in range(len(case_df['paragraphs'][caseNum])):
-				sentences.append("[CLS]"+case_df["entailed_fragment"][caseNum]+"[SEP]"+case_df['paragraphs'][caseNum][i])
+				sentences.append("[CLS]"+case_df["entailed_fragment"][caseNum]+"[SEP]"+case_df['paragraphs'][caseNum][i]+"[SEP]")
 				if(case_df['paragraph_names'][caseNum][i] in relevant_paragraphs):
 					labels.append("Entailment")
 				else:
@@ -347,9 +353,8 @@ class caseEntailment():
 
 	    if entailment: 
             topn=len(rankedDocs)
-            sortedDocs_unfiltered = rankedDocs
-            sortedDocs = [(k, v) for k,v in sortedDocs_unfiltered if v >= thresh]
-            if len(sortedDocs)==0: sortedDocs=[sortedDocs_unfiltered[0]]
+            sortedDocs = [(k, v) for k,v in rankedDocs if v >= thresh]
+            if len(sortedDocs)==0: sortedDocs=[rankedDocs[0]]
             rankedDocs = sortedDocs
 
 	    for x in range(min(topn, len(rankedDocs))):
@@ -395,24 +400,12 @@ class caseEntailment():
 	    results.close()
 
 
-	def EvaluateSimilarityT5(self, sentence_pairs, labels, model_name):
+	def EvaluateSimilarityT5(self, paragraph_pairs, labels, model_name):
 
 		
 		tokenizer = T5Tokenizer.from_pretrained("t5-small")
 		model = T5ForConditionalGeneration.from_pretrained(model_name)
 		#data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
-
-		tokenized_sentences = tokenizer(sentence_pairs, padding=True, return_tensors="pt", truncation=True)
-		tokenized_labels = tokenizer(labels, padding=True, return_tensors="pt")
-
-		test_data = ForT5Dataset(tokenized_sentences, tokenized_labels)
-
-		loader = torch.utils.data.DataLoader(test_data, batch_size=4)
-
-		for batch in loader:
-			break
-		print({k: v.shape for k, v in batch.items()})
-
 
 		model.eval()
 
@@ -421,15 +414,23 @@ class caseEntailment():
 
 		print(next(model.parameters()).is_cuda) # returns a boolean
 
-		loop = tqdm(loader)
-		for batch in loop:
 
-			sentences = batch['input_ids'].to(device)
-			labels = batch['labels'].to(device)
+		totalCases = len(self.caseDataFrame)
+	    case_completed = 0
+	    for caseNum in tqdm(range(totalCases)):
+	    	similarity_scores = []
+	        print("Processing:", case_completed, "out of",totalCases,"cases")
 
-			output = model.generate(sentences)
-			print(tokenizer.batch_decode(output))
-			
+	        # parse through each sentence pair of dataset
+	        for i in tqdm(range(len(self.caseDataFrame['paragraphs'][caseNum]))):
+	        	paragraph_pair = "[CLS]"+self.caseDataFrame["entailed_fragment"][caseNum]+"[SEP]"+self.caseDataFrame['paragraphs'][caseNum][i]+"[SEP]"
+	        	tokenized_paragraphs = tokenizer(paragraph_pair, padding=True, return_tensors="pt", truncation=True)
+				
+				output = model(tokenized_paragraphs['input_ids'], attention_mask=tokenized_paragraphs['attention_mask'])
+				
+				prediction = tokenizer.decode(output)
+
+				
 	     
 	def transformer_preprocess(self, model_name):
 
@@ -486,11 +487,12 @@ class caseEntailment():
 
 
 
-# entailment_model = caseEntailment('COLIEE2021')
-# entailment_model.preProcess()
-# # # # entailment_model.bm25Entailment()
-# # sentences, labels = entailment_model.preProcessT5(train=True)
-# # entailment_model.trainT5(sentences, labels)
+
+entailment_model = caseEntailment('COLIEE2021')
+entailment_model.preProcess()
+# # # entailment_model.bm25Entailment()
+sentences, labels = entailment_model.preProcessT5(train=True)
+entailment_model.trainT5(sentences, labels)
 # sentences, labels = entailment_model.preProcessT5(train=False)
 # entailment_model.EvaluateSimilarityT5(sentences, labels, "./models/t5")
 
