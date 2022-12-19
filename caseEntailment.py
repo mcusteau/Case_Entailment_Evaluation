@@ -19,21 +19,23 @@ nlp = English()
 wn = nltk.WordNetLemmatizer()
 
 class ForT5Dataset(torch.utils.data.Dataset):
-	def __init__(self, inputs, targets):
-		self.inputs = inputs
-		self.targets = targets
 
-	def __len__(self):
-		return len(self.targets.input_ids)
+    def __init__(self, inputs, targets):
+        self.inputs = inputs
+        self.targets = targets
+    
+    def __len__(self):
+        return len(self.targets.input_ids)
+    
+    def __getitem__(self, index):
+        input_ids = torch.tensor(self.inputs["input_ids"][index]).squeeze()
+        target_ids = torch.tensor(self.targets["input_ids"][index]).squeeze()
 
-	def __getitem__(self, index):
-		input_ids = torch.tensor(self.inputs["input_ids"][index]).squeeze()
-		target_ids = torch.tensor(self.targets["input_ids"][index]).squeeze()
+        input_ids_am = torch.tensor(self.inputs["attention_mask"][index]).squeeze()
+        target_ids_am = torch.tensor(self.targets["attention_mask"][index]).squeeze()
+        
+        return {"input_ids": input_ids, "input_attention_mask": input_ids_am, "labels": target_ids, "labels_attention_mask": target_ids_am}
 
-		input_ids_am = torch.tensor(self.inputs["attention_mask"][index]).squeeze()
-		target_ids_am = torch.tensor(self.targets["attention_mask"][index]).squeeze()
-
-		return {"input_ids": input_ids, "input_attention_mask": input_ids_am, "labels": target_ids, "labels_attention_mask": target_ids_am}
 
 class caseEntailment():
 
@@ -296,9 +298,11 @@ class caseEntailment():
 			for batch in loop:
 
 				paragraphs = batch['input_ids'].to(device)
+
 				labels = batch['labels'].to(device)
 				paragraphs_am = batch['input_attention_mask'].to(device)
 				labels = batch['labels'].to(device)
+
 				labels_am = batch['labels_attention_mask'].to(device)
 				output = model(input_ids=paragraphs, labels=labels, attention_mask=paragraphs_am, decoder_attention_mask=labels_am)
 
@@ -308,12 +312,14 @@ class caseEntailment():
 				lr_scheduler.step()
 				optim.zero_grad()
 			torch.save({
-			'epoch': epoch,
-			'model_state_dict': model.state_dict(),
-			'optimizer_state_dict': optim.state_dict(),
-			'scheduler_state_dict': lr_scheduler.state_dict(),
-			'loss': loss,
-			}, './models/checkpoint'+str(epoch)+'_am.pth.tar')
+
+		    'epoch': epoch,
+		    'model_state_dict': model.state_dict(),
+		    'optimizer_state_dict': optim.state_dict(),
+		    'scheduler_state_dict': lr_scheduler.state_dict(),
+		    'loss': loss,
+		    }, './models/checkpoint'+str(epoch)+'_am.pth.tar')
+
 			print('saved checkpoint')
 		model.save_pretrained('./models/t5_am')
 
@@ -388,19 +394,32 @@ class caseEntailment():
 	@staticmethod
 	def results(testQuerieNum, rankedDocs, resultFile, topn=100, entailment=False, thresh=None):
 
-		if entailment: 
-			topn=len(rankedDocs)
-			sortedDocs = [(k, v) for k,v in rankedDocs if v >= thresh]
-			if len(sortedDocs)==0: sortedDocs=[rankedDocs[0]]
-			rankedDocs = sortedDocs
 
-		for x in range(min(topn, len(rankedDocs))):
-			rank = str(x + 1)
-			docID, score = rankedDocs[x]
-			resultFile.write(testQuerieNum + "\tQ0\t" + str(docID) +
-				"\t" + rank + "\t" + str(score) + "\tmyRun\n")
-			pass
-		pass 
+	    if entailment: 
+            topn=len(rankedDocs)
+            sortedDocs = [(k, v) for k,v in rankedDocs if v >= thresh]
+            if len(sortedDocs)==0: sortedDocs=[rankedDocs[0]]
+            rankedDocs = sortedDocs
+
+	    for x in range(min(topn, len(rankedDocs))):
+	        rank = str(x + 1)
+	        docID, score = rankedDocs[x]
+	        resultFile.write(testQuerieNum + "\tQ0\t" + str(docID) +
+	                "\t" + rank + "\t" + str(score) + "\tmyRun\n")
+	        pass
+	    pass 
+
+    # # Write output in result txt file
+    # @staticmethod
+    # def relevantResults(testQuerieNum, rankedDocs, resultFile, topn=100,relevant=True):
+
+    #     for x in range( len(rankedDocs)):
+    #         rank = str(x + 1)
+    #         docID, score = rankedDocs[x]
+    #         resultFile.write(testQuerieNum + "\tQ0\t" + str(docID) +
+    #                 "\t" + rank + "\t" + str(score) + "\tmyRun\n")
+    #         pass
+    #     pass 
 
 
 
@@ -453,21 +472,23 @@ class caseEntailment():
 
 
 		totalCases = len(self.caseDataFrame)
-		case_completed = 0
-		for caseNum in tqdm(range(totalCases)):
-			similarity_scores = []
-			print("Processing:", case_completed, "out of",totalCases,"cases")
 
-			# parse through each sentence pair of dataset
-			for i in tqdm(range(len(self.caseDataFrame['paragraphs'][caseNum]))):
-				paragraph_pair = "[CLS]"+self.caseDataFrame["entailed_fragment"][caseNum]+"[SEP]"+self.caseDataFrame['paragraphs'][caseNum][i]+"[SEP]"
-				tokenized_paragraphs = tokenizer(paragraph_pair, padding=True, return_tensors="pt", truncation=True)
+	    case_completed = 0
+	    for caseNum in tqdm(range(totalCases)):
+	    	similarity_scores = []
+	        print("Processing:", case_completed, "out of",totalCases,"cases")
 
+	        # parse through each sentence pair of dataset
+	        for i in tqdm(range(len(self.caseDataFrame['paragraphs'][caseNum]))):
+	        	paragraph_pair = "[CLS]"+self.caseDataFrame["entailed_fragment"][caseNum]+"[SEP]"+self.caseDataFrame['paragraphs'][caseNum][i]+"[SEP]"
+	        	tokenized_paragraphs = tokenizer(paragraph_pair, padding=True, return_tensors="pt", truncation=True)
+				
 				output = model(tokenized_paragraphs['input_ids'], attention_mask=tokenized_paragraphs['attention_mask'])
-
+				
 				prediction = tokenizer.decode(output)
 
 				
+	     
 
 	def transformer_preprocess(self, model_name):
 
@@ -553,12 +574,14 @@ class caseEntailment():
 
 
 
+
 # entailment_model = caseEntailment('COLIEE2021')
 # entailment_model.preProcess()
 # # # entailment_model.bm25Entailment()
 # sentences, labels = entailment_model.preProcessT5(train=True)
 # # 
 # entailment_model.trainT5(sentences, labels)
+
 # sentences, labels = entailment_model.preProcessT5(train=False)
 # entailment_model.EvaluateSimilarityT5(sentences, labels, "./models/t5")
 
