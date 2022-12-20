@@ -9,10 +9,10 @@ import nltk
 import string
 import json
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader,TensorDataset
 from rank_bm25 import BM25Okapi as BM25
 from sentence_transformers import SentenceTransformer, util, InputExample,losses
-from transformers import T5Tokenizer, T5ForConditionalGeneration, DataCollatorWithPadding, AdamW, get_scheduler
+from transformers import T5Tokenizer, T5ForConditionalGeneration, DataCollatorWithPadding, AdamW, get_scheduler,AutoTokenizer,AutoModelForSequenceClassification, TrainingArguments, Trainer
 
 nlp = English()
 
@@ -34,6 +34,20 @@ class ForT5Dataset(torch.utils.data.Dataset):
 		target_ids_am = torch.tensor(self.targets["attention_mask"][index]).squeeze()
 
 		return {"input_ids": input_ids, "input_attention_mask": input_ids_am, "labels": target_ids, "labels_attention_mask": target_ids_am}
+
+
+
+class ForBERTDataset(torch.utils.data.Dataset):
+    def init(self, encodings):
+        self.encodings = encodings
+
+    def getitem(self, idx):
+        return {key: torch.tensor(val[idx]) for key, val in self.encodings.items()}
+
+    def len(self):
+        return len(self.encodings.input_ids)
+
+
 
 class caseEntailment():
 
@@ -370,7 +384,7 @@ class caseEntailment():
 			relevant_paragraphs = [i.replace(".txt", "") for i in labels_json[case_number]]
 
 			for i in range(len(case_df['paragraphs'][caseNum])):
-				sentences.append( (case_df["entailed_fragment"][caseNum],case_df['paragraphs'][caseNum][i]) )
+				sentences.append( [case_df["entailed_fragment"][caseNum],case_df['paragraphs'][caseNum][i]])
 
 				if(case_df['paragraph_names'][caseNum][i] in relevant_paragraphs):
 					labels.append(1)
@@ -378,6 +392,22 @@ class caseEntailment():
 					labels.append(0)
 
 		return sentences, labels
+
+	def preProcessPairs(self, sentence_pairs, labels):
+		#USE preProcessBERT() before calling this function
+		data_dict={}
+		pair={}
+
+		for i in range(len(labels)):
+
+			if labels[i]=="Entailment"
+				pair={"label":1, "text":sentence_pairs[i]}
+			else:
+				pair={"label":0, "text":sentence_pairs[i]} 
+			data_dict.append(pair)
+
+		return data_dict
+
 
 
 ########## Computing Results
@@ -482,6 +512,7 @@ class caseEntailment():
 
 
 
+
 	def TrainBERT(self, sentence_pairs, labels, model_path, model_name="./models/bert_base_model_test"):
 		# model_name="bert-base-uncased"
 
@@ -502,6 +533,133 @@ class caseEntailment():
 		print(next(self.model.parameters()).is_cuda) # returns a boolean
 
 		self.model.fit(train_objectives=[(train_dataloader, train_loss)], epochs=5, warmup_steps=100, output_path=model_path)
+
+
+	def TrainBERTClassification(self, paragraph_pairs, labels, model_path, model_name="bert-base-uncased"):
+
+		tokenizer = AutoTokenizer.from_pretrained(model_name)
+
+		self.model = AutoModelForSequenceClassification.from_pretrained(model_name)
+		#data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
+
+		tokenized_paragraphs = tokenizer(paragraph_pairs, padding=True, return_tensors="pt", truncation=True)
+
+		## convert lists to tensors
+
+		train_seq = torch.tensor(tokenized_paragraphs['input_ids'])
+		train_mask = torch.tensor(tokenized_paragraphs['attention_mask'])
+		train_y = torch.tensor(labels)
+
+		# wrap tensors
+		train_data = TensorDataset(train_seq, train_mask, train_y)
+
+		loader = DataLoader(train_data, batch_size=4, shuffle=True)
+
+		for batch in loader:
+			break
+		print({k: v.shape for k, v in batch.items()})
+
+		optim = AdamW(self.model.parameters(), lr=3e-4)
+
+		num_epochs = 10
+		start_epoch = 0
+
+		device = torch.device('cuda')
+		self.model.to(device)
+
+		# checkpoint = torch.load('./models/checkpoint5_am.pth.tar', map_location='cpu')
+		# model.load_state_dict(checkpoint['model_state_dict'])
+		# optim.load_state_dict(checkpoint['optimizer_state_dict'])
+		# last_epoch = checkpoint['epoch']
+		# loss = checkpoint['loss']
+
+
+		print(next(self.model.parameters()).is_cuda) # returns a boolean
+
+
+		self.model.train()
+
+		start_epoch=0
+		for epoch in range(start_epoch, num_epochs):
+			loop = tqdm(loader)
+			for batch in loop:
+
+				# push the batch to gpu
+    			batch = [r.to(device) for r in batch]
+    			print(batch)
+
+    			paragraphs, mask, labels = batch
+
+				# paragraphs = batch['input_ids'].to(device)
+				# labels = batch['labels'].to(device)
+				# paragraphs_am = batch['input_attention_mask'].to(device)
+
+				output = model(input_ids=paragraphs, labels=labels, attention_mask=mask)
+
+				loss = output.loss
+				loss.backward()
+				optim.step()
+				optim.zero_grad()
+
+			torch.save({
+		    'epoch': epoch,
+		    'model_state_dict': model.state_dict(),
+		    'optimizer_state_dict': optim.state_dict(),
+		    'loss': loss,
+		    }, './models/bert_class_checkpoint.pth.tar')
+			print('saved checkpoint')
+		model.save_pretrained(model_path)
+
+
+
+
+	# def TrainBERTClassification(self, sentence_pairs,labels, model_path="./models/bert_base_classification_21",model_name="bert-base-uncased"):
+		
+	# 	cases_list=[]
+	# 	pair={}
+
+	# 	for i in range(len(labels)):
+	# 		pair={"label":labels[i], "text":sentence_pairs[i]}	
+	# 		cases_list.append(pair)
+
+
+	# 	tokenizer = AutoTokenizer.from_pretrained(model_name)
+	# 	tokenized_paragraphs=tokenizer(sentence_pairs, truncation=True)
+
+	# 	data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
+
+	# 	id2label = {0: "false", 1: "true"}
+	# 	label2id = {"false": 0, "true": 1}
+
+	# 	model = AutoModelForSequenceClassification.from_pretrained(model_name, 
+	# 							num_labels=2, id2label=id2label, label2id=label2id)
+
+
+	# 	training_args = TrainingArguments(
+	# 		output_dir=model_path,
+	# 		learning_rate=2e-5,
+	# 		per_device_train_batch_size=16,
+	# 		per_device_eval_batch_size=16,
+	# 		num_train_epochs=2,
+	# 		weight_decay=0.01,
+	# 		evaluation_strategy="epoch",
+	# 		save_strategy="epoch",
+	# 		load_best_model_at_end=True,
+	# 		push_to_hub=True,
+	# 	)
+
+	# 	trainer = Trainer(
+	# 		model=self.model,
+	# 		args=training_args,
+	# 		train_dataset=cases_list,
+	# 		# eval_dataset=tokenized_imdb["test"],
+	# 		tokenizer=tokenizer,
+	# 		data_collator=data_collator,
+	# 		compute_metrics=compute_metrics,
+	# 	)
+
+	# 	trainer.train()
+
 
 
 
