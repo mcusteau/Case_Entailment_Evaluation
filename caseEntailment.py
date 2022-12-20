@@ -14,6 +14,7 @@ from rank_bm25 import BM25Okapi as BM25
 from sentence_transformers import SentenceTransformer, util, InputExample,losses
 from transformers import T5Tokenizer, T5ForConditionalGeneration, DataCollatorWithPadding, AdamW, get_scheduler,AutoTokenizer,AutoModelForSequenceClassification, TrainingArguments, Trainer
 
+
 nlp = English()
 
 wn = nltk.WordNetLemmatizer()
@@ -79,8 +80,9 @@ class caseEntailment():
 		self.customStopwordLst = [" " , "\n", "'s", "...", "\n ", " \n", " \n ", "\xa0"]
 
 		if(python36):
-			# in case we ever need to use a server that has a lower python version, not in use currently
-			pass
+			self.pickleFilePath = datasetName+"/task_2/test_pickles/clean_query_36"
+			self.pickleFilePath_train = datasetName+"/task_2/train_pickles/clean_query_36"
+
 		else:
 			self.pickleFilePath = datasetName+"/task_2/test_pickles/clean_query_coliee2021"
 			self.pickleFilePath_train = datasetName+"/task_2/train_pickles/clean_query_coliee2021"
@@ -195,7 +197,8 @@ class caseEntailment():
 	########## Evaluate Data
 
 	@staticmethod
-	def calculateRecall(self, results, labels, topn):
+
+	def calculateRecall(self, results, labels):
 		lf = open(labels, "r")
 		rf = open(results, "r")
 
@@ -214,17 +217,18 @@ class caseEntailment():
 				if(line_split[0]==label.replace(".txt","")):
 					retreived.append(line_split[2])
 
-			for i in range(min(topn, len(retreived))):
+
+			for i in range(len(retreived)):
 				if(retreived[i] in relevant_docs):
 					rel_num+=1
 
 		recall = rel_num/rel_cases
-		print("recall at top "+str(topn)+" found is", recall)
+		print("recall :", recall)
 		return recall
 
 
 	@staticmethod
-	def calculatePrecision(self, results, labels, topn):
+	def calculatePrecision(self, results, labels):
 		lf = open(labels, "r")
 		rf = open(results, "r")
 		results_lines = rf.readlines()
@@ -243,32 +247,34 @@ class caseEntailment():
 				if(line_split[0]==label.replace(".txt","")):
 					retreived.append(line_split[2])
 		
-			for i in range(min(topn, len(retreived))):
+			for i in range(len(retreived)):
 				retreived_cases +=1
 				if(retreived[i] in relevant_docs):
 					rel_num+=1
 
 		# retreived_cases = num_queries*topn
 		precision = rel_num/retreived_cases
-		print("precision at top "+str(topn)+" found is", precision)
+		print("precision :", precision)
 		return precision
 
 
 
-	def calculateF1(self, results, labels, topn):
-		recall = self.calculateRecall(self, results, labels, topn)
-		precision = self.calculatePrecision(self, results, labels, topn)
+	def calculateF1(self, results, labels):
+		recall = self.calculateRecall(self, results, labels)
+		precision = self.calculatePrecision(self, results, labels)
 		f1 = (2*precision*recall)/(precision+recall)
-		print("f1 at top "+str(topn)+" found is", f1)
+		print("f1 :", f1)
 		return f1
+
+
 
 
 ########## Training
 
 	def trainT5(self, paragraph_pairs, labels):
 
-		tokenizer = T5Tokenizer.from_pretrained("t5-small")
-		model = T5ForConditionalGeneration.from_pretrained("t5-small")
+		tokenizer = T5Tokenizer.from_pretrained("t5-base")
+		model = T5ForConditionalGeneration.from_pretrained("t5-base")
 		#data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
 
 		tokenized_paragraphs = tokenizer(paragraph_pairs, padding=True, return_tensors="pt", truncation=True)
@@ -282,22 +288,20 @@ class caseEntailment():
 			break
 		print({k: v.shape for k, v in batch.items()})
 
-		optim = AdamW(model.parameters(), lr=5e-5)
+		optim = AdamW(model.parameters(), lr=3e-4)
 
-		num_epochs = 2
+		num_epochs = 3
 		start_epoch = 0
-
-		num_training_steps = num_epochs * len(loader)
-		lr_scheduler = get_scheduler(
-			"linear",
-			optimizer=optim,
-			num_warmup_steps=0,
-			num_training_steps=num_training_steps,
-		)
-
 
 		device = torch.device('cuda')
 		model.to(device)
+
+		# checkpoint = torch.load('./models/checkpoint5_am.pth.tar', map_location='cpu')
+		# model.load_state_dict(checkpoint['model_state_dict'])
+		# optim.load_state_dict(checkpoint['optimizer_state_dict'])
+		# last_epoch = checkpoint['epoch']
+		# loss = checkpoint['loss']
+
 
 		print(next(model.parameters()).is_cuda) # returns a boolean
 
@@ -312,24 +316,26 @@ class caseEntailment():
 				paragraphs = batch['input_ids'].to(device)
 				labels = batch['labels'].to(device)
 				paragraphs_am = batch['input_attention_mask'].to(device)
-				labels = batch['labels'].to(device)
-				labels_am = batch['labels_attention_mask'].to(device)
-				output = model(input_ids=paragraphs, labels=labels, attention_mask=paragraphs_am, decoder_attention_mask=labels_am)
+
+				output = model(input_ids=paragraphs, labels=labels, attention_mask=paragraphs_am)
+
 
 				loss = output.loss
 				loss.backward()
 				optim.step()
-				lr_scheduler.step()
 				optim.zero_grad()
+
 			torch.save({
 			'epoch': epoch,
 			'model_state_dict': model.state_dict(),
 			'optimizer_state_dict': optim.state_dict(),
-			'scheduler_state_dict': lr_scheduler.state_dict(),
 			'loss': loss,
-			}, './models/checkpoint'+str(epoch)+'_am.pth.tar')
+
+			}, './models/checkpoint.pth.tar')
+
+
 			print('saved checkpoint')
-		model.save_pretrained('./models/t5_am')
+		model.save_pretrained('./models/t5_2021_3ep')
 
 
 	def preProcessT5(self, train=True):
@@ -352,15 +358,16 @@ class caseEntailment():
 			case_number = case_df['case_number'][caseNum]
 			relevant_paragraphs = [i.replace(".txt", "") for i in labels_json[case_number]]
 			for i in range(len(case_df['paragraphs'][caseNum])):
-				sentences.append("[CLS]"+case_df["entailed_fragment"][caseNum]+"[SEP]"+case_df['paragraphs'][caseNum][i]+"[SEP]")
+				sentences.append([case_df["entailed_fragment"][caseNum], case_df['paragraphs'][caseNum][i]])
 				if(case_df['paragraph_names'][caseNum][i] in relevant_paragraphs):
-					labels.append("Entailment")
+					labels.append("true")
 				else:
-					labels.append("Exclusion")
+					labels.append("false")
 
 		return sentences, labels
 
 
+	
 	def preProcessBERT(self, train=True):
 
 		if(train):
@@ -384,7 +391,7 @@ class caseEntailment():
 			relevant_paragraphs = [i.replace(".txt", "") for i in labels_json[case_number]]
 
 			for i in range(len(case_df['paragraphs'][caseNum])):
-				sentences.append( [case_df["entailed_fragment"][caseNum],case_df['paragraphs'][caseNum][i]])
+				sentences.append( (case_df["entailed_fragment"][caseNum],case_df['paragraphs'][caseNum][i]) )
 
 				if(case_df['paragraph_names'][caseNum][i] in relevant_paragraphs):
 					labels.append(1)
@@ -434,6 +441,8 @@ class caseEntailment():
 
 
 
+
+
 	#returns ranked by bm25 score dictionary with doc id as key and score as value
 	@staticmethod
 	def rankDocsBM25(self, testQuerie, documentLabels):
@@ -462,16 +471,17 @@ class caseEntailment():
 			rankedDocs = self.rankDocsBM25(self, self.caseDataFrame['entailed_fragment_clean'][caseNum], self.caseDataFrame['paragraph_names'][caseNum])
 
 			# write results
-			self.results(self.caseDataFrame['case_number'][caseNum], rankedDocs, results, topn=5)
+			self.results(self.caseDataFrame['case_number'][caseNum], rankedDocs, results, topn=1)
+
 
 		results.close()
 
 
 	def EvaluateSimilarityT5(self, paragraph_pairs, labels, model_name):
-
+		results = open(self.resultFile, 'w+')
 		
-		tokenizer = T5Tokenizer.from_pretrained("t5-small")
-		model = T5ForConditionalGeneration.from_pretrained(model_name)
+		tokenizer = T5Tokenizer.from_pretrained("t5-base")
+		model = T5ForConditionalGeneration.from_pretrained("model_name")
 		#data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
 
 		model.eval()
@@ -479,25 +489,44 @@ class caseEntailment():
 		device = torch.device('cuda')
 		model.to(device)
 
+		# checkpoint = torch.load(model_name, map_location='cpu')
+		# model.load_state_dict(checkpoint['model_state_dict'])
+
 		print(next(model.parameters()).is_cuda) # returns a boolean
 
 
 		totalCases = len(self.caseDataFrame)
+
 		case_completed = 0
-		for caseNum in tqdm(range(totalCases)):
+		for caseNum in range(totalCases):
 			similarity_scores = []
 			print("Processing:", case_completed, "out of",totalCases,"cases")
 
+
 			# parse through each sentence pair of dataset
 			for i in tqdm(range(len(self.caseDataFrame['paragraphs'][caseNum]))):
-				paragraph_pair = "[CLS]"+self.caseDataFrame["entailed_fragment"][caseNum]+"[SEP]"+self.caseDataFrame['paragraphs'][caseNum][i]+"[SEP]"
+				paragraph_pair = [[self.caseDataFrame["entailed_fragment"][caseNum], self.caseDataFrame['paragraphs'][caseNum][i]]]
 				tokenized_paragraphs = tokenizer(paragraph_pair, padding=True, return_tensors="pt", truncation=True)
 
-				output = model(tokenized_paragraphs['input_ids'], attention_mask=tokenized_paragraphs['attention_mask'])
+				tokenized_paragraphs.to(device)
+				output = model.generate(tokenized_paragraphs['input_ids'], attention_mask=tokenized_paragraphs['attention_mask'])
 
-				prediction = tokenizer.decode(output)
+				prediction = tokenizer.decode(output[0])
+				#print(prediction)
 
-				
+				entailment = "<pad> true</s>"
+				exclusion = "<pad> false</s>"
+
+				if(prediction==entailment):
+					similarity_scores.append((self.caseDataFrame['paragraph_names'][caseNum][i], 1))
+				elif(prediction==exclusion):
+					similarity_scores.append((self.caseDataFrame['paragraph_names'][caseNum][i], 0))
+
+			sortedDocs_unfiltered = [(k, v) for k, v in sorted(similarity_scores, key=lambda item: item[1], reverse=True)]
+			self.results(self.caseDataFrame['case_number'][caseNum], sortedDocs_unfiltered, results, entailment=True, thresh=0.5)
+			case_completed += 1
+		results.close()
+	     
 
 	def transformer_preprocess(self, model_name):
 
@@ -509,7 +538,6 @@ class caseEntailment():
 		#         torch.cuda.empty_cache()
 		#         self.model.to(device)
 		return self.model
-
 
 
 
@@ -535,7 +563,7 @@ class caseEntailment():
 		self.model.fit(train_objectives=[(train_dataloader, train_loss)], epochs=5, warmup_steps=100, output_path=model_path)
 
 
-	def TrainBERTClassification(self, paragraph_pairs, labels, model_path, model_name="bert-base-uncased"):
+	def TrainBERTClassification(self, paragraph_pairs, labels, model_path, model_name,epochs=5):
 
 		tokenizer = AutoTokenizer.from_pretrained(model_name)
 
@@ -555,13 +583,13 @@ class caseEntailment():
 
 		loader = DataLoader(train_data, batch_size=4, shuffle=True)
 
-		for batch in loader:
-			break
-		print({k: v.shape for k, v in batch.items()})
+		# for batch in loader:
+		# 	break
+		# print({k: v.shape for k, v in batch.items()})
 
 		optim = AdamW(self.model.parameters(), lr=3e-4)
 
-		num_epochs = 10
+		num_epochs = epochs
 		start_epoch = 0
 
 		device = torch.device('cuda')
@@ -585,80 +613,31 @@ class caseEntailment():
 			for batch in loop:
 
 				# push the batch to gpu
-    			batch = [r.to(device) for r in batch]
-    			print(batch)
+					batch = [r.to(device) for r in batch]
+					# print(batch)
 
-    			paragraphs, mask, labels = batch
+					paragraphs, mask, labels = batch
 
 				# paragraphs = batch['input_ids'].to(device)
 				# labels = batch['labels'].to(device)
 				# paragraphs_am = batch['input_attention_mask'].to(device)
 
-				output = model(input_ids=paragraphs, labels=labels, attention_mask=mask)
+					output = self.model(input_ids=paragraphs, labels=labels, attention_mask=mask)
 
-				loss = output.loss
-				loss.backward()
-				optim.step()
-				optim.zero_grad()
+					loss = output.loss
+					loss.backward()
+					optim.step()
+					optim.zero_grad()
 
 			torch.save({
-		    'epoch': epoch,
-		    'model_state_dict': model.state_dict(),
-		    'optimizer_state_dict': optim.state_dict(),
-		    'loss': loss,
-		    }, './models/bert_class_checkpoint.pth.tar')
+				'epoch': epoch,
+				'model_state_dict': self.model.state_dict(),
+				'optimizer_state_dict': optim.state_dict(),
+				'loss': loss,
+				}, './models/bert_class_checkpoint.pth.tar')
 			print('saved checkpoint')
-		model.save_pretrained(model_path)
+		self.model.save_pretrained(model_path)
 
-
-
-
-	# def TrainBERTClassification(self, sentence_pairs,labels, model_path="./models/bert_base_classification_21",model_name="bert-base-uncased"):
-		
-	# 	cases_list=[]
-	# 	pair={}
-
-	# 	for i in range(len(labels)):
-	# 		pair={"label":labels[i], "text":sentence_pairs[i]}	
-	# 		cases_list.append(pair)
-
-
-	# 	tokenizer = AutoTokenizer.from_pretrained(model_name)
-	# 	tokenized_paragraphs=tokenizer(sentence_pairs, truncation=True)
-
-	# 	data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
-
-	# 	id2label = {0: "false", 1: "true"}
-	# 	label2id = {"false": 0, "true": 1}
-
-	# 	model = AutoModelForSequenceClassification.from_pretrained(model_name, 
-	# 							num_labels=2, id2label=id2label, label2id=label2id)
-
-
-	# 	training_args = TrainingArguments(
-	# 		output_dir=model_path,
-	# 		learning_rate=2e-5,
-	# 		per_device_train_batch_size=16,
-	# 		per_device_eval_batch_size=16,
-	# 		num_train_epochs=2,
-	# 		weight_decay=0.01,
-	# 		evaluation_strategy="epoch",
-	# 		save_strategy="epoch",
-	# 		load_best_model_at_end=True,
-	# 		push_to_hub=True,
-	# 	)
-
-	# 	trainer = Trainer(
-	# 		model=self.model,
-	# 		args=training_args,
-	# 		train_dataset=cases_list,
-	# 		# eval_dataset=tokenized_imdb["test"],
-	# 		tokenizer=tokenizer,
-	# 		data_collator=data_collator,
-	# 		compute_metrics=compute_metrics,
-	# 	)
-
-	# 	trainer.train()
 
 
 
@@ -703,7 +682,6 @@ class caseEntailment():
 
 			self.results(self.caseDataFrame['case_number'][caseNum], sortedDocs_unfiltered, results, entailment=True,thresh=thresh)
 			case_completed+=1
-
 		results.close()
 	
 
@@ -712,16 +690,20 @@ class caseEntailment():
 
 
 # entailment_model = caseEntailment('COLIEE2021')
+# #entailment_model.createDataFrames()
 # entailment_model.preProcess()
-# # # entailment_model.bm25Entailment()
+# # entailment_model.bm25Entailment()
 # sentences, labels = entailment_model.preProcessT5(train=True)
-# # 
 # entailment_model.trainT5(sentences, labels)
+
+
 # sentences, labels = entailment_model.preProcessT5(train=False)
-# entailment_model.EvaluateSimilarityT5(sentences, labels, "./models/t5")
+# entailment_model.EvaluateSimilarityT5(sentences, labels, "./models/t5_2021_10_epochs")
+#entailment_model.calculateF1(entailment_model.resultFile, entailment_model.test_labels)
 
         
    
+
 
 
 entailment_model = caseEntailment('COLIEE2021')
