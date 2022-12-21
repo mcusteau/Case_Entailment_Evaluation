@@ -9,6 +9,7 @@ import nltk
 import string
 import json
 import torch
+import numpy as np
 from torch.utils.data import DataLoader
 from rank_bm25 import BM25Okapi as BM25
 from sentence_transformers import SentenceTransformer, util, InputExample,losses
@@ -20,20 +21,20 @@ wn = nltk.WordNetLemmatizer()
 
 class ForT5Dataset(torch.utils.data.Dataset):
 
-    def __init__(self, inputs, targets):
-        self.inputs = inputs
-        self.targets = targets
-    
-    def __len__(self):
-        return len(self.targets.input_ids)
-    
-    def __getitem__(self, index):
-        input_ids = torch.tensor(self.inputs["input_ids"][index]).squeeze()
-        target_ids = torch.tensor(self.targets["input_ids"][index]).squeeze()
+	def __init__(self, inputs, targets):
+		self.inputs = inputs
+		self.targets = targets
+	
+	def __len__(self):
+		return len(self.targets.input_ids)
+	
+	def __getitem__(self, index):
+		input_ids = torch.tensor(self.inputs["input_ids"][index]).squeeze()
+		target_ids = torch.tensor(self.targets["input_ids"][index]).squeeze()
 
-        input_ids_am = torch.tensor(self.inputs["attention_mask"][index]).squeeze()
+		input_ids_am = torch.tensor(self.inputs["attention_mask"][index]).squeeze()
 
-        return {"input_ids": input_ids, "input_attention_mask": input_ids_am, "labels": target_ids}
+		return {"input_ids": input_ids, "input_attention_mask": input_ids_am, "labels": target_ids}
 
 
 class caseEntailment():
@@ -67,8 +68,8 @@ class caseEntailment():
 
 		if(python36):
 
-		    self.pickleFilePath = datasetName+"/task_2/test_pickles/clean_query_36"
-		    self.pickleFilePath_train = datasetName+"/task_2/train_pickles/clean_query_36"
+			self.pickleFilePath = datasetName+"/task_2/test_pickles/clean_query_36"
+			self.pickleFilePath_train = datasetName+"/task_2/train_pickles/clean_query_36"
 
 		else:
 			self.pickleFilePath = datasetName+"/task_2/test_pickles/clean_query_coliee2021"
@@ -185,8 +186,8 @@ class caseEntailment():
 
 	@staticmethod
 	def calculateRecall(self, results, labels):
-	    lf = open(labels, "r")
-	    rf = open(results, "r")
+		lf = open(labels, "r")
+		rf = open(results, "r")
 
 		results_lines = rf.readlines()
 		labels_json = json.load(lf)
@@ -203,59 +204,60 @@ class caseEntailment():
 				if(line_split[0]==label.replace(".txt","")):
 					retreived.append(line_split[2])
 
-	        for i in range(len(retreived)):
-	            if(retreived[i] in relevant_docs):
-	                rel_num+=1
+			for i in range(len(retreived)):
+				if(retreived[i] in relevant_docs):
+					rel_num+=1
 
-	    recall = rel_num/rel_cases
-	    print("recall :", recall)
-	    return recall
+		recall = rel_num/rel_cases
+		print("recall :", recall)
+		return recall
 
 
 	@staticmethod
 	def calculatePrecision(self, results, labels):
-	    lf = open(labels, "r")
-	    rf = open(results, "r")
-	    results_lines = rf.readlines()
-	    labels_json = json.load(lf)
-	    retreived_cases = 0
-	    rel_num = 0
-	    num_queries=0
-	    for label in labels_json.keys():
-	        num_queries +=1
-	        relevant_docs = labels_json[label].split(", ")
-	        for i in range(len(relevant_docs)):
-	            relevant_docs[i] = relevant_docs[i].replace(".txt","")
-	        retreived = []
-	        for line in results_lines:
-	            line_split = line.split('\t')
-	            if(line_split[0]==label.replace(".txt","")):
-	                retreived.append(line_split[2])
-		
-	        for i in range(len(retreived)):
-	            retreived_cases +=1
-	            if(retreived[i] in relevant_docs):
-	                rel_num+=1
+		lf = open(labels, "r")
+		rf = open(results, "r")
+		results_lines = rf.readlines()
+		labels_json = json.load(lf)
+		retreived_cases = 0
+		rel_num = 0
+		num_queries=0
+		for label in labels_json.keys():
+			num_queries +=1
+			relevant_docs = labels_json[label].split(", ")
+			for i in range(len(relevant_docs)):
+				relevant_docs[i] = relevant_docs[i].replace(".txt","")
+			retreived = []
+			for line in results_lines:
+				line_split = line.split('\t')
+				if(line_split[0]==label.replace(".txt","")):
+					retreived.append(line_split[2])
 
-	    # retreived_cases = num_queries*topn
-	    precision = rel_num/retreived_cases
-	    print("precision :", precision)
-	    return precision
+			for i in range(len(retreived)):
+				retreived_cases +=1
+				if(retreived[i] in relevant_docs):
+					rel_num+=1
+
+		# retreived_cases = num_queries*topn
+		precision = rel_num/retreived_cases
+		print("precision :", precision)
+		return precision
 
 
 
 	def calculateF1(self, results, labels):
-	    recall = self.calculateRecall(self, results, labels)
-	    precision = self.calculatePrecision(self, results, labels)
-	    f1 = (2*precision*recall)/(precision+recall)
-	    print("f1 :", f1)
-	    return f1
+		recall = self.calculateRecall(self, results, labels)
+		precision = self.calculatePrecision(self, results, labels)
+		f1 = (2*precision*recall)/(precision+recall)
+		print("f1 :", f1)
+		return f1
 
 
 
 ########## Training
 
 	def trainT5(self, paragraph_pairs, labels):
+
 
 		tokenizer = T5Tokenizer.from_pretrained("t5-base")
 		model = T5ForConditionalGeneration.from_pretrained("t5-base")
@@ -311,18 +313,18 @@ class caseEntailment():
 
 			torch.save({
 
-		    'epoch': epoch,
-		    'model_state_dict': model.state_dict(),
-		    'optimizer_state_dict': optim.state_dict(),
-		    'loss': loss,
+			'epoch': epoch,
+			'model_state_dict': model.state_dict(),
+			'optimizer_state_dict': optim.state_dict(),
+			'loss': loss,
 
-		    }, './models/checkpoint.pth.tar')
+			}, './models/checkpoint.pth.tar')
 
 			print('saved checkpoint')
-		model.save_pretrained('./models/t5_2021_3ep')
+		model.save_pretrained('./models/t5_2021_8ep')
 
 
-	def preProcessT5(self, train=True):
+	def preProcessT5(self, train=True, seperate=True):
 
 		if(train):
 			case_df = self.caseDataFrame_train
@@ -334,19 +336,52 @@ class caseEntailment():
 		lf = open(label_file, "r")
 		labels_json = json.load(lf)
 
-		sentences = []
-		labels = []
+		if(seperate):
 
-		totalCases = len(case_df)
-		for caseNum in tqdm(range(totalCases)):
-			case_number = case_df['case_number'][caseNum]
-			relevant_paragraphs = [i.replace(".txt", "") for i in labels_json[case_number]]
-			for i in range(len(case_df['paragraphs'][caseNum])):
-				sentences.append([case_df["entailed_fragment"][caseNum], case_df['paragraphs'][caseNum][i]])
-				if(case_df['paragraph_names'][caseNum][i] in relevant_paragraphs):
-					labels.append("true")
-				else:
-					labels.append("false")
+			sentences_positive = []
+			labels_positive = []
+			sentences_negative = []
+			labels_negative = []
+
+			totalCases = len(case_df)
+			for caseNum in tqdm(range(totalCases)):
+				case_number = case_df['case_number'][caseNum]
+				relevant_paragraphs = [i.replace(".txt", "") for i in labels_json[case_number]]
+				for i in range(len(case_df['paragraphs'][caseNum])):
+					if(case_df['paragraph_names'][caseNum][i] in relevant_paragraphs):
+						sentences_positive.append([case_df["entailed_fragment"][caseNum], case_df['paragraphs'][caseNum][i]])
+						labels_positive.append("true")
+					else:
+						sentences_negative.append([case_df["entailed_fragment"][caseNum], case_df['paragraphs'][caseNum][i]])
+						labels_negative.append("false")
+
+			
+			np.random.shuffle(sentences_negative)
+			sentences_negative = sentences_negative[:len(sentences_positive)]
+			labels_negative = labels_negative[:len(sentences_positive)]
+
+			sentences = sentences_negative + sentences_positive
+			labels = labels_positive + labels_negative
+
+			with open("./2021_sentences", "wb") as f:
+				pickle.dump(sentences, f)
+			with open("./2021_labels", "wb") as f:
+				pickle.dump(labels, f)
+
+		else:
+			sentences = []
+			labels = []
+
+			totalCases = len(case_df)
+			for caseNum in tqdm(range(totalCases)):
+				case_number = case_df['case_number'][caseNum]
+				relevant_paragraphs = [i.replace(".txt", "") for i in labels_json[case_number]]
+				for i in range(len(case_df['paragraphs'][caseNum])):
+					sentences.append([case_df["entailed_fragment"][caseNum], case_df['paragraphs'][caseNum][i]])
+					if(case_df['paragraph_names'][caseNum][i] in relevant_paragraphs):
+						labels.append("true")
+					else:
+						labels.append("false")
 
 		return sentences, labels
 
@@ -392,32 +427,32 @@ class caseEntailment():
 	@staticmethod
 	def results(testQuerieNum, rankedDocs, resultFile, topn=100, entailment=False, thresh=None):
 
-	    if entailment: 
-            topn=len(rankedDocs)
-            sortedDocs = [(k, v) for k,v in rankedDocs if v >= thresh]
-            if len(sortedDocs)==0: sortedDocs=[rankedDocs[0]]
-            rankedDocs = sortedDocs
+		if entailment: 
+			topn=len(rankedDocs)
+			sortedDocs = [(k, v) for k,v in rankedDocs if v >= thresh]
+			if len(sortedDocs)==0: sortedDocs=[rankedDocs[0]]
+			rankedDocs = sortedDocs
 
 
 		for x in range(min(topn, len(rankedDocs))):
-		    rank = str(x + 1)
-		    docID, score = rankedDocs[x]
-		    resultFile.write(testQuerieNum + "\tQ0\t" + str(docID) +
-		            "\t" + rank + "\t" + str(score) + "\tmyRun\n")
-		    pass
+			rank = str(x + 1)
+			docID, score = rankedDocs[x]
+			resultFile.write(testQuerieNum + "\tQ0\t" + str(docID) +
+					"\t" + rank + "\t" + str(score) + "\tmyRun\n")
+			pass
 		pass 
 
-    # # Write output in result txt file
-    # @staticmethod
-    # def relevantResults(testQuerieNum, rankedDocs, resultFile, topn=100,relevant=True):
+	# # Write output in result txt file
+	# @staticmethod
+	# def relevantResults(testQuerieNum, rankedDocs, resultFile, topn=100,relevant=True):
 
-    #     for x in range( len(rankedDocs)):
-    #         rank = str(x + 1)
-    #         docID, score = rankedDocs[x]
-    #         resultFile.write(testQuerieNum + "\tQ0\t" + str(docID) +
-    #                 "\t" + rank + "\t" + str(score) + "\tmyRun\n")
-    #         pass
-    #     pass 
+	#     for x in range( len(rankedDocs)):
+	#         rank = str(x + 1)
+	#         docID, score = rankedDocs[x]
+	#         resultFile.write(testQuerieNum + "\tQ0\t" + str(docID) +
+	#                 "\t" + rank + "\t" + str(score) + "\tmyRun\n")
+	#         pass
+	#     pass 
 
 
 
@@ -448,18 +483,18 @@ class caseEntailment():
 			# calculate scores
 			rankedDocs = self.rankDocsBM25(self, self.caseDataFrame['entailed_fragment_clean'][caseNum], self.caseDataFrame['paragraph_names'][caseNum])
 
-	        # write results
-	        self.results(self.caseDataFrame['case_number'][caseNum], rankedDocs, results, topn=1)
+			# write results
+			self.results(self.caseDataFrame['case_number'][caseNum], rankedDocs, results, topn=1)
 
 
 		results.close()
 
 
-	def EvaluateSimilarityT5(self, paragraph_pairs, labels, model_name):
+	def EvaluateSimilarityT5(self, paragraph_pairs, labels, tokenizer_model, model_name):
 		results = open(self.resultFile, 'w+')
 		
-		tokenizer = T5Tokenizer.from_pretrained("t5-base")
-		model = T5ForConditionalGeneration.from_pretrained("model_name")
+		tokenizer = T5Tokenizer.from_pretrained(tokenizer_model)
+		model = T5ForConditionalGeneration.from_pretrained(model_name)
 		#data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
 
 		model.eval()
@@ -486,8 +521,10 @@ class caseEntailment():
 				paragraph_pair = [[self.caseDataFrame["entailed_fragment"][caseNum], self.caseDataFrame['paragraphs'][caseNum][i]]]
 				tokenized_paragraphs = tokenizer(paragraph_pair, padding=True, return_tensors="pt", truncation=True)
 
-				tokenized_paragraphs.to(device)
-				output = model.generate(tokenized_paragraphs['input_ids'], attention_mask=tokenized_paragraphs['attention_mask'])
+				input_ids = tokenized_paragraphs['input_ids'].to(device)
+				mask = tokenized_paragraphs['attention_mask'].to(device)
+
+				output = model.generate(input_ids, attention_mask=mask)
 
 				prediction = tokenizer.decode(output[0])
 				#print(prediction)
@@ -504,7 +541,7 @@ class caseEntailment():
 			self.results(self.caseDataFrame['case_number'][caseNum], sortedDocs_unfiltered, results, entailment=True, thresh=0.5)
 			case_completed += 1
 		results.close()
-	     
+		 
 
 	def transformer_preprocess(self, model_name):
 
@@ -596,24 +633,24 @@ entailment_model = caseEntailment('COLIEE2021')
 entailment_model.preProcess()
 # entailment_model.bm25Entailment()
 sentences, labels = entailment_model.preProcessT5(train=True)
-entailment_model.trainT5(sentences, labels)
+#entailment_model.trainT5(sentences, labels)
 # sentences, labels = entailment_model.preProcessT5(train=False)
-# entailment_model.EvaluateSimilarityT5(sentences, labels, "./models/t5_2021_10_epochs")
-#entailment_model.calculateF1(entailment_model.resultFile, entailment_model.test_labels)
+# entailment_model.EvaluateSimilarityT5(sentences, labels, "t5-base", "./models/t5_2021_4ep")
+# entailment_model.calculateF1(entailment_model.resultFile, entailment_model.test_labels)
 
-        
+		
    
 
 
 
-entailment_model = caseEntailment('COLIEE2021')
+#entailment_model = caseEntailment('COLIEE2021')
 # entailment_model.createDataFrames()
-entailment_model.preProcess()
-sentences, labels = entailment_model.preProcessBERT(train=True)
+#entailment_model.preProcess()
+#sentences, labels = entailment_model.preProcessBERT(train=True)
 
 #   2021:    ./models/bert_base_model_test
 #   2022:    ./models/bert_base_model_test22
 
-entailment_model.TrainBERT(sentences, labels, model_name="./models/bert_base_model_test", model_path="./models/bert_base_model_test")
+#entailment_model.TrainBERT(sentences, labels, model_name="./models/bert_base_model_test", model_path="./models/bert_base_model_test")
 # entailment_model.EvaluateSimilaritySBERT()
 # entailment_model.calculateF1(entailment_model.resultFile, entailment_model.test_labels, 5)
